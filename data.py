@@ -8,7 +8,7 @@ import pytorch_lightning as pl
 from sklearn.model_selection import train_test_split
 
 
-class BertDataset(Dataset):
+class RoBertaDataset(Dataset):
     def __init__(self, df: DataFrame, is_train: bool, tokenizer, max_len: int):
         self.sentence = df.sentence.values
         self.labels = {
@@ -57,7 +57,7 @@ class BertDataset(Dataset):
             }
 
 
-class BertDataModule(pl.LightningDataModule):
+class RoBertaDataModule(pl.LightningDataModule):
     def __init__(self,
                  batch_size: int,
                  tokenizer,
@@ -75,11 +75,11 @@ class BertDataModule(pl.LightningDataModule):
     def setup(self, stage: Optional[str] = None) -> None:
         if stage == 'fit' or stage == 'train':
             train, valid = train_test_split(self.train_df, test_size=0.2)
-            self.train = BertDataset(train, True, self.tokenizer, self.max_token_len)
-            self.val = BertDataset(valid, True, self.tokenizer, self.max_token_len)
+            self.train = RoBertaDataset(train, True, self.tokenizer, self.max_token_len)
+            self.val = RoBertaDataset(valid, True, self.tokenizer, self.max_token_len)
 
         if stage == 'predict':
-            self.predict = BertDataset(self.predict_df, False, self.tokenizer, self.max_token_len)
+            self.predict = RoBertaDataset(self.predict_df, False, self.tokenizer, self.max_token_len)
 
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.batch_size, num_workers=4)
