@@ -1,8 +1,7 @@
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from torchmetrics import Accuracy
-from transformers import RobertaModel
+from transformers import AutoModel
 
 
 class Classifier(nn.Module):
@@ -20,11 +19,11 @@ class Classifier(nn.Module):
 
 class RoBERTa(pl.LightningModule):
     # Set up the classifier
-    def __init__(self, BERT_MODEL_NAME: str = "roberta-base", lr=2e-5):
+    def __init__(self, model_name: str = "roberta-base", lr=2e-5):
         super().__init__()
 
         # LAYERS
-        self.roberta = RobertaModel.from_pretrained(BERT_MODEL_NAME, return_dict=True)
+        self.roberta = AutoModel.from_pretrained(model_name, return_dict=True)
         self.type_classifier = nn.Linear(self.roberta.config.hidden_size, 4)
         self.polarity_classifier = nn.Linear(self.roberta.config.hidden_size, 3)
         self.tense_classifier = nn.Linear(self.roberta.config.hidden_size, 3)
