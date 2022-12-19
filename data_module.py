@@ -45,10 +45,10 @@ class RoBertaDataset(Dataset):
             return {
                 'input_ids': input_ids,
                 'attention_mask': attn_mask,
-                "type": torch.tensor(self.labels["type"], dtype=torch.float),
-                "polarity": torch.tensor(self.labels["polarity"], dtype=torch.float),
-                "tense": torch.tensor(self.labels["tense"], dtype=torch.float),
-                "certainty": torch.tensor(self.labels["certainty"], dtype=torch.float)
+                "type": torch.tensor(self.labels["type"][index], dtype=torch.long),
+                "polarity": torch.tensor(self.labels["polarity"][index], dtype=torch.long),
+                "tense": torch.tensor(self.labels["tense"][index], dtype=torch.long),
+                "certainty": torch.tensor(self.labels["certainty"][index], dtype=torch.long)
             }
         else:
             return {
@@ -59,13 +59,13 @@ class RoBertaDataset(Dataset):
 
 class RoBertaDataModule(pl.LightningDataModule):
     def __init__(self,
-                 batch_size: int,
                  tokenizer,
-                 max_token_len: int,
                  train_df: pd.DataFrame = None,
-                 predict_df: pd.DataFrame = None
+                 predict_df: pd.DataFrame = None,
+                 batch_size: int = 16,
+                 max_token_len: int = 512,
                  ):
-        super.__init__()
+        super().__init__()
         self.batch_size = batch_size
         self.tokenizer = tokenizer
         self.max_token_len = max_token_len

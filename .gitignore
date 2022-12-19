@@ -1,3 +1,7 @@
 # Project exclude paths
 /data/
 .idea
+wandb
+lightning_logs
+submissions/*.csv
+ckpts/*

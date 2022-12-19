@@ -1,9 +1,8 @@
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from torchmetrics import Accuracy
 from transformers import RobertaModel
-
-BERT_MODEL_NAME = "roberta-base"
 
 
 class Classifier(nn.Module):
@@ -11,8 +10,8 @@ class Classifier(nn.Module):
         super(Classifier, self).__init__()
         self.classifier = nn.Sequential(
             nn.Linear(in_features, in_features // 2),
-            nn.Dropout(p=0.3),
-            nn.Linear(in_features // 2, out_features=4),
+            nn.Dropout(p=dropout),
+            nn.Linear(in_features // 2, out_features),
         )
 
     def forward(self, x):
@@ -21,47 +20,57 @@ class Classifier(nn.Module):
 
 class RoBERTa(pl.LightningModule):
     # Set up the classifier
-    def __init__(self, n_classes=10, steps_per_epoch=None, n_epochs=3, lr=2e-5):
+    def __init__(self, BERT_MODEL_NAME: str = "roberta-base", lr=2e-5):
         super().__init__()
 
         # LAYERS
-        self.bert = RobertaModel.from_pretrained(BERT_MODEL_NAME, return_dict=True)
-        self.classifiers = {
-            "type": Classifier(self.bert.config.hidden_size, 4, 0.3),
-            "polarity": Classifier(self.bert.config.hidden_size, 3, 0.3),
-            "tense": Classifier(self.bert.config.hidden_size, 3, 0.3),
-            "certainty": Classifier(self.bert.config.hidden_size, 2, 0.3)
-        }
+        self.roberta = RobertaModel.from_pretrained(BERT_MODEL_NAME, return_dict=True)
+        self.type_classifier = nn.Linear(self.roberta.config.hidden_size, 4)
+        self.polarity_classifier = nn.Linear(self.roberta.config.hidden_size, 3)
+        self.tense_classifier = nn.Linear(self.roberta.config.hidden_size, 3)
+        self.certainty_classifier = nn.Linear(self.roberta.config.hidden_size, 2)
 
         # PARAMS
-        self.steps_per_epoch = steps_per_epoch
-        self.n_epochs = n_epochs
         self.lr = lr
         self.criterion = {
             "type": nn.CrossEntropyLoss(),
             "polarity": nn.CrossEntropyLoss(),
             "tense": nn.CrossEntropyLoss(),
-            "certainty": nn.CrossEntropyLoss()
+            "certainty": nn.CrossEntropyLoss(),
         }
 
     def forward(self, input_ids, attn_mask):
-        output = self.bert(input_ids=input_ids, attention_mask=attn_mask)
+        output = self.roberta(input_ids=input_ids, attention_mask=attn_mask)
 
         return {
-            "type": self.classifiers["type"](output),
-            "polarity": self.classifiers["polarity"](output),
-            "tense": self.classifiers["tense"](output),
-            "certainty": self.classifiers["certainty"](output)
+            "type": self.type_classifier(output.pooler_output),
+            "polarity": self.polarity_classifier(output.pooler_output),
+            "tense": self.tense_classifier(output.pooler_output),
+            "certainty": self.certainty_classifier(output.pooler_output)
         }
 
     def training_step(self, batch, batch_size):
-        outputs = self(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+        outputs = self(batch["input_ids"], batch["attention_mask"])
 
-        losses = {k: self.criterion[k](batch[k], v) for k, v in outputs.items()}
+        losses = {f'train/loss-{k}': self.criterion[k](v, batch[k]) for k, v in outputs.items()}
+        total_loss = sum(losses.values()) / len(losses)
+        losses['train/loss-total'] = total_loss
+
+        self.log_dict(losses, prog_bar=True, logger=True)
+        return total_loss
+
+    def validation_step(self, batch, batch_size):
+        outputs = self(batch["input_ids"], batch["attention_mask"])
+
+        losses = {f'val/loss-{k}': self.criterion[k](v, batch[k]) for k, v in outputs.items()}
+        total_loss = sum(losses.values()) / len(losses)
+        losses['val/loss-total'] = total_loss
 
         self.log_dict(losses, prog_bar=True, logger=True)
 
-        return sum(losses.values()) / len(losses)
+    def predict_step(self, batch, batch_size):
+        outputs = self(batch["input_ids"], batch["attention_mask"])
+        return outputs
 
     def configure_optimizers(self):
         return torch.optim.Adam(self.parameters(), lr=self.lr)
