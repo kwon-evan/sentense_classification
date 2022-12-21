@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+from torchmetrics.functional.classification import multiclass_hamming_distance
 from transformers import AutoModel
 
 
@@ -24,10 +25,22 @@ class RoBERTa(pl.LightningModule):
 
         # LAYERS
         self.roberta = AutoModel.from_pretrained(model_name, return_dict=True)
-        self.type_classifier = nn.Linear(self.roberta.config.hidden_size, 4)
-        self.polarity_classifier = nn.Linear(self.roberta.config.hidden_size, 3)
-        self.tense_classifier = nn.Linear(self.roberta.config.hidden_size, 3)
-        self.certainty_classifier = nn.Linear(self.roberta.config.hidden_size, 2)
+        self.tense_classifier = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(self.roberta.config.hidden_size, 3)
+        )
+        self.type_classifier = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(self.roberta.config.hidden_size + 3, 4),
+        )
+        self.polarity_classifier = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(self.roberta.config.hidden_size + 3 + 4, 3)
+        )
+        self.certainty_classifier = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(self.roberta.config.hidden_size + 3 + 4 + 3, 2)
+        )
 
         # PARAMS
         self.lr = lr
@@ -40,13 +53,33 @@ class RoBERTa(pl.LightningModule):
 
     def forward(self, input_ids, attn_mask):
         output = self.roberta(input_ids=input_ids, attention_mask=attn_mask)
+        z = output.pooler_output
+
+        # type: # 1, polarity: 2, tense: 3, certainty: 4
+        # 3 -> 1 -> 2 -> 4
+        y_1 = self.tense_classifier(z, 3)
+        y_2 = self.type_classifier(torch.cat((z + y_1), dim=1), 4)
+        y_3 = self.polarity_classifier(torch.cat((z + y_1 + y_2), dim=1), 3)
+        y_4 = self.certainty_classifier(torch.cat((z + y_1 + y_2 + y_3), dim=1), 2)
+
+        print(f"y_1: {y_1.shape}")
+        print(f"y_2: {y_2.shape}")
+        print(f"y_3: {y_3.shape}")
+        print(f"y_4: {y_4.shape}")
 
         return {
-            "type": self.type_classifier(output.pooler_output),
-            "polarity": self.polarity_classifier(output.pooler_output),
-            "tense": self.tense_classifier(output.pooler_output),
-            "certainty": self.certainty_classifier(output.pooler_output)
+            "type": y_2,
+            "polarity": y_3,
+            "tense": y_1,
+            "certainty": y_4
         }
+
+        # return {
+        #     "type": self.type_classifier(output.pooler_output),
+        #     "polarity": self.polarity_classifier(output.pooler_output),
+        #     "tense": self.tense_classifier(output.pooler_output),
+        #     "certainty": self.certainty_classifier(output.pooler_output)
+        # }
 
     def training_step(self, batch, batch_size):
         outputs = self(batch["input_ids"], batch["attention_mask"])

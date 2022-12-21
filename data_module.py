@@ -62,19 +62,21 @@ class RoBertaDataModule(pl.LightningDataModule):
                  tokenizer,
                  train_df: pd.DataFrame = None,
                  predict_df: pd.DataFrame = None,
+                 seed: int = 42,
                  batch_size: int = 16,
                  max_token_len: int = 512,
                  ):
         super().__init__()
-        self.batch_size = batch_size
         self.tokenizer = tokenizer
-        self.max_token_len = max_token_len
         self.train_df = train_df
         self.predict_df = predict_df
+        self.seed = seed
+        self.batch_size = batch_size
+        self.max_token_len = max_token_len
 
     def setup(self, stage: Optional[str] = None) -> None:
         if stage == 'fit' or stage == 'train':
-            train, valid = train_test_split(self.train_df, test_size=0.2)
+            train, valid = train_test_split(self.train_df, test_size=0.2, random_state=self.seed, shuffle=True)
             self.train = RoBertaDataset(train, True, self.tokenizer, self.max_token_len)
             self.val = RoBertaDataset(valid, True, self.tokenizer, self.max_token_len)
 
